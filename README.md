@@ -27,8 +27,13 @@ prompts                        # reads ~/.claude
 prompts --claude-dir /path/to/.claude
 ```
 
-Projects are listed newest first, showing the working directory each was run
-in. Opening one lists every prompt across all of its sessions, newest first,
+Run inside a project and it opens that project straight away, skipping the
+list; `esc` still backs out to it, with the cursor on where you were. Run
+anywhere else and you get the list, newest first, showing the working directory
+each project was run in. A subdirectory counts as being in the project, and
+where projects nest the innermost one wins.
+
+Opening a project lists every prompt across all of its sessions, newest first,
 labelled with the session it came from.
 
 ### Keys

@@ -41,8 +41,24 @@ func run() error {
 		return err
 	}
 
-	_, err = tea.NewProgram(tui.New(projects)).Run()
+	_, err = tea.NewProgram(tui.New(projects, projectHere(projects))).Run()
 	return err
+}
+
+// projectHere returns the project the working directory belongs to, so that
+// running inside a checkout opens it directly. Nil when the directory is not
+// under any of them, or cannot be determined — either way the project list is
+// the sensible fallback.
+func projectHere(projects []claudelog.Project) *claudelog.Project {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+	p, ok := claudelog.MatchProject(projects, cwd)
+	if !ok {
+		return nil
+	}
+	return &p
 }
 
 func resolveDir(dir string) (string, error) {
