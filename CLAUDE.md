@@ -5,15 +5,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```sh
-go build ./...                                  # build
-go vet ./... && gofmt -l .                      # gofmt -l prints offending files; empty output is success
-go test ./...                                   # all tests
+make check                                      # build + vet + fmt-check + test: the whole gate
+make build                                      # ./prompts
+make install                                    # to $GOBIN, else $GOPATH/bin
+make fmt                                        # gofmt -w .
+make run                                        # against ~/.claude
+
 go test ./internal/claudelog/ -run TypedCommand -v   # one test
-go run ./cmd/prompts                            # run against ~/.claude
-go run ./cmd/prompts --claude-dir /path/to/.claude
+go run ./cmd/prompts --claude-dir /path/to/.claude   # against another archive
 ```
 
-There is no Makefile, linter config or CI. `build`, `vet`, `gofmt -l` and `test` are the whole gate.
+There is no linter config or CI; `make check` is the whole gate. `fmt-check` exists
+because `gofmt -l` lists offending files but still exits 0, so the non-empty case has
+to be turned into a failure by hand.
 
 ## Architecture
 

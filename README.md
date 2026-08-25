@@ -16,7 +16,8 @@ go install github.com/farrellm/prompts/cmd/prompts@latest
 Or from a checkout:
 
 ```sh
-go build ./cmd/prompts
+make install     # to $GOBIN, else $GOPATH/bin
+make build       # or just build ./prompts in place
 ```
 
 ## Usage
