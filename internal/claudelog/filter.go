@@ -1,0 +1,160 @@
+package claudelog
+
+import (
+	"encoding/json"
+	"regexp"
+	"sort"
+	"strings"
+)
+
+var systemReminder = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
+
+// wrapperPrefixes mark user entries that are not typed prompts: slash-command
+// plumbing, echoed command output, and interrupt markers.
+var wrapperPrefixes = []string{
+	"<command-name>",
+	"<command-message>",
+	"<local-command-stdout>",
+	"<bash-stdout>",
+	"<bash-stderr>",
+	"[Request interrupted",
+}
+
+// promptText returns the human-authored text of a user entry, or "" if the
+// entry is not a genuine prompt.
+//
+// User entries cover both typed prompts and tool results, and the archive also
+// holds meta entries, slash-command wrappers and task notifications. Everything
+// but the first is rejected here.
+func promptText(e *entry) string {
+	if e.Type != "user" || e.IsMeta || e.IsSidechain || len(e.ToolUseRes) > 0 {
+		return ""
+	}
+	if e.Origin != nil && e.Origin.Kind != "" && e.Origin.Kind != "human" {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, b := range e.Message.contentBlocks() {
+		switch b.Type {
+		case "tool_result":
+			// A tool result masquerading as a user turn.
+			return ""
+		case "text":
+			sb.WriteString(b.Text)
+		case "image":
+			sb.WriteString("[image]")
+		}
+	}
+
+	text := strings.TrimSpace(systemReminder.ReplaceAllString(sb.String(), ""))
+	if text == "" {
+		return ""
+	}
+	for _, p := range wrapperPrefixes {
+		if strings.HasPrefix(text, p) {
+			return ""
+		}
+	}
+	return text
+}
+
+// toolArgFields lists, per tool, the input field worth showing in a one-line
+// summary. Tools not listed fall back to the first string field.
+var toolArgFields = map[string]string{
+	"Bash":      "command",
+	"Read":      "file_path",
+	"Edit":      "file_path",
+	"Write":     "file_path",
+	"Glob":      "pattern",
+	"Grep":      "pattern",
+	"Task":      "description",
+	"Agent":     "description",
+	"WebFetch":  "url",
+	"WebSearch": "query",
+	"Skill":     "skill",
+}
+
+// fallbackArgFields are tried, in order, for tools not listed in
+// toolArgFields.
+var fallbackArgFields = []string{
+	"query", "prompt", "command", "pattern", "file_path", "path", "url",
+	"description", "name", "location",
+}
+
+const maxArgLen = 60
+
+// summariseToolArg reduces a tool's input to a single short line.
+func summariseToolArg(tool string, input json.RawMessage) string {
+	if len(input) == 0 {
+		return ""
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(input, &fields); err != nil {
+		return ""
+	}
+
+	var arg string
+	if name, ok := toolArgFields[tool]; ok {
+		arg = stringField(fields[name])
+	}
+	// Unknown tools — MCP servers especially — get a best guess from field
+	// names that commonly carry the interesting value.
+	if arg == "" {
+		for _, name := range fallbackArgFields {
+			if arg = stringField(fields[name]); arg != "" {
+				break
+			}
+		}
+	}
+	// Still nothing: take the first string field by name, so that repeated
+	// renders of the same call agree. Map iteration order would not.
+	if arg == "" {
+		names := make([]string, 0, len(fields))
+		for name := range fields {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if arg = stringField(fields[name]); arg != "" {
+				break
+			}
+		}
+	}
+	return truncate(collapse(arg), maxArgLen)
+}
+
+func stringField(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return ""
+	}
+	return s
+}
+
+// collapse folds whitespace runs, including newlines, into single spaces.
+func collapse(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// truncate shortens s to at most n runes, marking any elision with an ellipsis.
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return strings.TrimRight(string(r[:n-1]), " ") + "…"
+}
+
+// firstLine returns the first non-empty line of s, shortened to n runes.
+func firstLine(s string, n int) string {
+	for _, line := range strings.Split(s, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			return truncate(line, n)
+		}
+	}
+	return ""
+}
