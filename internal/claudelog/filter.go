@@ -9,15 +9,54 @@ import (
 
 var systemReminder = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
 
-// wrapperPrefixes mark user entries that are not typed prompts: slash-command
-// plumbing, echoed command output, and interrupt markers.
+// wrapperPrefixes mark user entries that are not typed input: the output a
+// command produced, and interrupt markers. What the user typed to produce that
+// output is handled by typedCommand instead.
 var wrapperPrefixes = []string{
-	"<command-name>",
-	"<command-message>",
 	"<local-command-stdout>",
 	"<bash-stdout>",
 	"<bash-stderr>",
 	"[Request interrupted",
+}
+
+var (
+	commandNameTag = regexp.MustCompile(`(?s)<command-name>(.*?)</command-name>`)
+	commandArgsTag = regexp.MustCompile(`(?s)<command-args>(.*?)</command-args>`)
+	bashInputTag   = regexp.MustCompile(`(?s)^<bash-input>(.*?)</bash-input>`)
+)
+
+// typedCommand reconstructs the slash command or ! bash line a user typed from
+// the tags Claude Code wraps it in, as "/name args" or "!command".
+//
+// Tag order varies between versions — <command-name> and <command-message> both
+// occur first — so the tags are matched wherever they appear rather than in
+// sequence. <command-args> carries the real content for prompt-bearing commands
+// such as plugin skills, so it is what makes these worth keeping at all.
+func typedCommand(text string) string {
+	if m := bashInputTag.FindStringSubmatch(text); m != nil {
+		if cmd := strings.TrimSpace(m[1]); cmd != "" {
+			return "!" + cmd
+		}
+		return ""
+	}
+
+	m := commandNameTag.FindStringSubmatch(text)
+	if m == nil {
+		return ""
+	}
+	name := strings.TrimSpace(m[1])
+	if name == "" {
+		return ""
+	}
+	if !strings.HasPrefix(name, "/") {
+		name = "/" + name
+	}
+	if a := commandArgsTag.FindStringSubmatch(text); a != nil {
+		if args := strings.TrimSpace(a[1]); args != "" {
+			return name + " " + args
+		}
+	}
+	return name
 }
 
 // promptText returns the human-authored text of a user entry, or "" if the
@@ -50,6 +89,11 @@ func promptText(e *entry) string {
 	text := strings.TrimSpace(systemReminder.ReplaceAllString(sb.String(), ""))
 	if text == "" {
 		return ""
+	}
+	// A slash command or ! bash line is something the user typed, so it is
+	// unwrapped and kept; the output it went on to produce is not.
+	if strings.HasPrefix(text, "<command-") || strings.HasPrefix(text, "<bash-input>") {
+		return typedCommand(text)
 	}
 	for _, p := range wrapperPrefixes {
 		if strings.HasPrefix(text, p) {

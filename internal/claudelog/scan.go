@@ -218,8 +218,8 @@ func parseSession(path string) ([]Turn, error) {
 		return turns, err
 	}
 
-	if title == "" && len(turns) > 0 {
-		title = firstLine(turns[0].Prompt, 60)
+	if title == "" {
+		title = fallbackTitle(turns)
 	}
 	if title == "" {
 		title = shortID(sessionID)
@@ -234,6 +234,29 @@ func newScanner(r io.Reader) *bufio.Scanner {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64<<10), maxLineLen)
 	return sc
+}
+
+// fallbackTitle names a session that Claude Code never generated a title for.
+// A bare command such as "/clear" says nothing about the session, so the first
+// prompt carrying actual content is preferred over merely the first prompt.
+func fallbackTitle(turns []Turn) string {
+	for _, t := range turns {
+		if !isBareCommand(t.Prompt) {
+			return firstLine(t.Prompt, 60)
+		}
+	}
+	if len(turns) > 0 {
+		return firstLine(turns[0].Prompt, 60)
+	}
+	return ""
+}
+
+// isBareCommand reports whether a prompt is a slash command with no arguments.
+func isBareCommand(prompt string) bool {
+	if !strings.HasPrefix(prompt, "/") {
+		return false
+	}
+	return len(strings.Fields(prompt)) == 1
 }
 
 // shortID abbreviates a session UUID for display.

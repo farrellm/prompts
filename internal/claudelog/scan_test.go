@@ -13,16 +13,20 @@ func TestParseSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseSession: %v", err)
 	}
-	if len(turns) != 3 {
-		t.Fatalf("got %d turns, want 3: %+v", len(turns), turns)
+	if len(turns) != 6 {
+		t.Fatalf("got %d turns, want 6: %+v", len(turns), turns)
 	}
 
-	// Meta entries, slash-command wrappers, echoed command output, interrupt
-	// markers, task notifications and tool results must all be rejected.
+	// Meta entries, echoed command output, interrupt markers, task
+	// notifications and tool results must all be rejected — and no prompt may
+	// carry the raw tags Claude Code wraps typed input in.
 	for _, turn := range turns {
-		for _, reject := range []string{"analyze this codebase", "<command-name>", "<local-command-stdout>", "[Request interrupted", "Agent finished"} {
+		for _, reject := range []string{
+			"analyze this codebase", "<command-", "<local-command-stdout>",
+			"<bash-", "[Request interrupted", "Agent finished",
+		} {
 			if strings.Contains(turn.Prompt, reject) {
-				t.Errorf("prompt %q should have been filtered out", turn.Prompt)
+				t.Errorf("prompt %q should not contain %q", turn.Prompt, reject)
 			}
 		}
 	}
@@ -54,20 +58,33 @@ func TestParseSession(t *testing.T) {
 		}
 	}
 
-	// System reminders are stripped from the prompt text.
-	if turns[1].Prompt != "second prompt" {
-		t.Errorf("second prompt = %q, want the system-reminder stripped", turns[1].Prompt)
+	// Typed commands are unwrapped and kept, in transcript order: a bare slash
+	// command, one whose args carry the real prompt, and a ! bash line.
+	wantCommands := []string{
+		"/clear",
+		"/frontend-design Build a notes viewer.\nReact.",
+		"!gh issue view 10 --comments",
 	}
-	if got := turns[1].Blocks[0].Arg; got != "/home/u/proj/go.mod" {
+	for i, w := range wantCommands {
+		if got := turns[1+i].Prompt; got != w {
+			t.Errorf("turn %d prompt = %q, want %q", 1+i, got, w)
+		}
+	}
+
+	// System reminders are stripped from the prompt text.
+	if turns[4].Prompt != "second prompt" {
+		t.Errorf("prompt = %q, want the system-reminder stripped", turns[4].Prompt)
+	}
+	if got := turns[4].Blocks[0].Arg; got != "/home/u/proj/go.mod" {
 		t.Errorf("Read arg = %q", got)
 	}
 
 	// Image blocks are noted inline rather than dropping the prompt.
-	if turns[2].Prompt != "[image]what is in this screenshot?" {
-		t.Errorf("third prompt = %q", turns[2].Prompt)
+	if turns[5].Prompt != "[image]what is in this screenshot?" {
+		t.Errorf("prompt = %q", turns[5].Prompt)
 	}
 	// An unrecognised tool falls back to its only string field.
-	if got := turns[2].Blocks[0].Arg; got != "field" {
+	if got := turns[5].Blocks[0].Arg; got != "field" {
 		t.Errorf("Mystery arg = %q, want the fallback string field", got)
 	}
 }
@@ -165,8 +182,8 @@ func TestListProjectsAndLoadProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadProject: %v", err)
 	}
-	if len(turns) != 3 {
-		t.Fatalf("got %d turns, want 3", len(turns))
+	if len(turns) != 6 {
+		t.Fatalf("got %d turns, want 6", len(turns))
 	}
 	// Turns come back newest first.
 	for i := 1; i < len(turns); i++ {
@@ -227,5 +244,93 @@ func TestSummariseToolArgIsDeterministic(t *testing.T) {
 	withQuery := json.RawMessage(`{"zebra":"z","query":"mount snow","alpha":"a"}`)
 	if got := summariseToolArg("mcp__whatever", withQuery); got != "mount snow" {
 		t.Errorf("summariseToolArg = %q, want the query field", got)
+	}
+}
+
+func TestTypedCommand(t *testing.T) {
+	for _, tc := range []struct{ name, in, want string }{
+		{
+			"name first, empty args",
+			"<command-name>/clear</command-name>\n  <command-message>clear</command-message>\n  <command-args></command-args>",
+			"/clear",
+		},
+		{
+			// Older transcripts put the message first and omit args entirely.
+			"message first, no args tag",
+			"<command-message>init</command-message>\n<command-name>/init</command-name>",
+			"/init",
+		},
+		{
+			"args carry the real prompt",
+			"<command-name>/design</command-name>\n<command-args>Build a notes viewer. React.</command-args>",
+			"/design Build a notes viewer. React.",
+		},
+		{
+			"multi-line args are kept whole",
+			"<command-name>/design</command-name>\n<command-args>first line\nsecond line</command-args>",
+			"/design first line\nsecond line",
+		},
+		{
+			"a plugin-qualified name keeps its colon",
+			"<command-name>/claude-md-management:revise</command-name>",
+			"/claude-md-management:revise",
+		},
+		{
+			// The leading slash is part of the name in practice, but a
+			// transcript that omits it should still read as a command.
+			"a name without its slash gains one",
+			"<command-name>doctor</command-name>",
+			"/doctor",
+		},
+		{
+			"a bash line keeps only the input",
+			"<bash-input> gh issue view 10</bash-input>\n<bash-stdout>(no output)</bash-stdout><bash-stderr></bash-stderr>",
+			"!gh issue view 10",
+		},
+		{"an empty name is not a command", "<command-name></command-name>", ""},
+		{"an empty bash line is not a command", "<bash-input></bash-input>", ""},
+		{"output alone is not a command", "<local-command-stdout>done</local-command-stdout>", ""},
+	} {
+		if got := typedCommand(tc.in); got != tc.want {
+			t.Errorf("%s: typedCommand = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// A session that opens with /clear should not be titled "/clear".
+func TestFallbackTitleSkipsBareCommands(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	os.WriteFile(path, []byte(strings.Join([]string{
+		`{"type":"user","uuid":"a","origin":{"kind":"human"},"message":{"role":"user","content":"<command-name>/clear</command-name>"}}`,
+		`{"type":"user","uuid":"b","origin":{"kind":"human"},"message":{"role":"user","content":"<command-name>/doctor</command-name>"}}`,
+		`{"type":"user","uuid":"c","origin":{"kind":"human"},"message":{"role":"user","content":"trim the CLAUDE.md"}}`,
+		"",
+	}, "\n")), 0o600)
+
+	turns, err := parseSession(path)
+	if err != nil || len(turns) != 3 {
+		t.Fatalf("parseSession: %v, %d turns", err, len(turns))
+	}
+	if turns[0].SessionTitle != "trim the CLAUDE.md" {
+		t.Errorf("title = %q, want the first prompt with content", turns[0].SessionTitle)
+	}
+
+	// A command with arguments does carry content, so it may title a session.
+	withArgs := filepath.Join(dir, "t.jsonl")
+	os.WriteFile(withArgs, []byte(
+		`{"type":"user","uuid":"a","origin":{"kind":"human"},"message":{"role":"user","content":"<command-name>/design</command-name><command-args>a notes viewer</command-args>"}}`+"\n"), 0o600)
+	turns, _ = parseSession(withArgs)
+	if len(turns) != 1 || turns[0].SessionTitle != "/design a notes viewer" {
+		t.Errorf("title = %q, want the command with its arguments", turns[0].SessionTitle)
+	}
+
+	// If every prompt is a bare command there is nothing better to use.
+	allBare := filepath.Join(dir, "u.jsonl")
+	os.WriteFile(allBare, []byte(
+		`{"type":"user","uuid":"a","origin":{"kind":"human"},"message":{"role":"user","content":"<command-name>/clear</command-name>"}}`+"\n"), 0o600)
+	turns, _ = parseSession(allBare)
+	if len(turns) != 1 || turns[0].SessionTitle != "/clear" {
+		t.Errorf("title = %q, want the bare command as a last resort", turns[0].SessionTitle)
 	}
 }

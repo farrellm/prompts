@@ -69,6 +69,22 @@ Committed to `master` as 00c8152.
 
 ## What counts as a prompt
 
-Only what you actually typed. Tool results, slash-command plumbing, background
-task notifications, interrupt markers and injected system reminders are all
-filtered out, and assistant reasoning blocks are omitted from responses.
+Only what you actually typed — which includes slash commands and `!` bash
+lines, unwrapped from the tags Claude Code stores them in:
+
+```
+/clear
+/frontend-design Build a notes viewer. React. Primarily for iPhone.
+!gh issue view 10 --comments
+```
+
+The arguments matter: a plugin skill invoked as `/design <a paragraph of
+requirements>` keeps the whole paragraph, which is usually the real prompt.
+
+Tool results, the output commands produce, background task notifications,
+interrupt markers and injected system reminders are all filtered out, and
+assistant reasoning blocks are omitted from responses.
+
+Session-management commands (`/clear`, `/model`, `/plugin` and friends) are
+listed like anything else. They have no response, so they read as bare entries;
+on this machine they account for roughly 150 of 714 prompts.

@@ -6,7 +6,9 @@
 {"type":"assistant","uuid":"a3","requestId":"req_2","timestamp":"2026-07-31T03:03:13.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"hidden reasoning"}]}}
 {"type":"assistant","uuid":"a4","requestId":"req_2","timestamp":"2026-07-31T03:03:14.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Three packages."}]}}
 {"type":"user","uuid":"m1","isMeta":true,"timestamp":"2026-07-31T03:04:00.000Z","message":{"role":"user","content":[{"type":"text","text":"Please analyze this codebase"}]}}
-{"type":"user","uuid":"c1","timestamp":"2026-07-31T03:04:01.000Z","message":{"role":"user","content":"<command-name>/clear</command-name>\n<command-message>clear</command-message>"}}
+{"type":"user","uuid":"c1","timestamp":"2026-07-31T03:04:01.000Z","cwd":"/home/u/proj","message":{"role":"user","content":"<command-name>/clear</command-name>\n            <command-message>clear</command-message>\n            <command-args></command-args>"}}
+{"type":"user","uuid":"c1b","timestamp":"2026-07-31T03:04:01.500Z","cwd":"/home/u/proj","message":{"role":"user","content":"<command-message>frontend-design</command-message>\n<command-name>/frontend-design</command-name>\n<command-args>Build a notes viewer.\nReact.</command-args>"}}
+{"type":"user","uuid":"c1c","timestamp":"2026-07-31T03:04:01.700Z","cwd":"/home/u/proj","message":{"role":"user","content":"<bash-input> gh issue view 10 --comments</bash-input>\n<bash-stdout>(Bash completed with no output)</bash-stdout><bash-stderr></bash-stderr>"}}
 {"type":"user","uuid":"c2","timestamp":"2026-07-31T03:04:02.000Z","message":{"role":"user","content":"<local-command-stdout>(no content)</local-command-stdout>"}}
 {"type":"user","uuid":"c3","timestamp":"2026-07-31T03:04:03.000Z","message":{"role":"user","content":"[Request interrupted by user for tool use]"}}
 {"type":"user","uuid":"n1","timestamp":"2026-07-31T03:04:04.000Z","promptSource":"system","origin":{"kind":"task-notification"},"message":{"role":"user","content":"Agent finished: build passed"}}
