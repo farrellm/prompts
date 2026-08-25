@@ -175,7 +175,7 @@ func parseSession(path string) ([]Turn, error) {
 				title = e.AITitle
 			}
 		case "user":
-			text := promptText(&e)
+			text, command := promptText(&e)
 			if text == "" {
 				continue
 			}
@@ -190,6 +190,7 @@ func parseSession(path string) ([]Turn, error) {
 				Cwd:       e.Cwd,
 				GitBranch: e.GitBranch,
 				Prompt:    text,
+				Command:   command,
 			})
 		case "assistant":
 			// Assistant turns arrive one entry per content block, so blocks

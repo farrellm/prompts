@@ -38,6 +38,15 @@ func (i turnItem) Title() string {
 	return mark.String() + " " + firstLine(i.turn.Prompt)
 }
 
+// truncate shortens s to at most n runes, marking any elision.
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
+}
+
 func (i turnItem) Description() string {
 	return fmt.Sprintf("   %s · %s",
 		i.turn.SessionTitle,

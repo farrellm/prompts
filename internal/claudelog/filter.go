@@ -60,17 +60,18 @@ func typedCommand(text string) string {
 }
 
 // promptText returns the human-authored text of a user entry, or "" if the
-// entry is not a genuine prompt.
+// entry is not a genuine prompt. The second result reports whether the entry
+// was typed as a slash command or ! bash line.
 //
 // User entries cover both typed prompts and tool results, and the archive also
-// holds meta entries, slash-command wrappers and task notifications. Everything
-// but the first is rejected here.
-func promptText(e *entry) string {
+// holds meta entries, command output and task notifications. Everything but
+// what a person typed is rejected here.
+func promptText(e *entry) (string, bool) {
 	if e.Type != "user" || e.IsMeta || e.IsSidechain || len(e.ToolUseRes) > 0 {
-		return ""
+		return "", false
 	}
 	if e.Origin != nil && e.Origin.Kind != "" && e.Origin.Kind != "human" {
-		return ""
+		return "", false
 	}
 
 	var sb strings.Builder
@@ -78,7 +79,7 @@ func promptText(e *entry) string {
 		switch b.Type {
 		case "tool_result":
 			// A tool result masquerading as a user turn.
-			return ""
+			return "", false
 		case "text":
 			sb.WriteString(b.Text)
 		case "image":
@@ -88,19 +89,20 @@ func promptText(e *entry) string {
 
 	text := strings.TrimSpace(systemReminder.ReplaceAllString(sb.String(), ""))
 	if text == "" {
-		return ""
+		return "", false
 	}
 	// A slash command or ! bash line is something the user typed, so it is
 	// unwrapped and kept; the output it went on to produce is not.
 	if strings.HasPrefix(text, "<command-") || strings.HasPrefix(text, "<bash-input>") {
-		return typedCommand(text)
+		cmd := typedCommand(text)
+		return cmd, cmd != ""
 	}
 	for _, p := range wrapperPrefixes {
 		if strings.HasPrefix(text, p) {
-			return ""
+			return "", false
 		}
 	}
-	return text
+	return text, false
 }
 
 // toolArgFields lists, per tool, the input field worth showing in a one-line

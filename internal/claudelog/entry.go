@@ -89,7 +89,16 @@ type Turn struct {
 	Cwd          string
 	GitBranch    string
 	Prompt       string
+	Command      bool // typed as a slash command or ! bash line
 	Blocks       []Block
+}
+
+// Housekeeping reports whether a turn is a session-management command such as
+// /clear or /model — typed at the CLI, but never reaching the model, so there
+// is no response to read. A command that did get a response, such as /init or a
+// plugin skill, is an ordinary prompt.
+func (t Turn) Housekeeping() bool {
+	return t.Command && len(t.Blocks) == 0
 }
 
 // Project is one directory under ~/.claude/projects.

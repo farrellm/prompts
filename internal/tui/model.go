@@ -61,6 +61,7 @@ func New(projects []claudelog.Project) Model {
 
 	pl := newList(items, "project", "projects")
 	tl := newList(nil, "prompt", "prompts")
+	tl.SetDelegate(newTurnDelegate())
 
 	fn := textinput.New()
 	fn.Prompt = "Export to: "
@@ -162,7 +163,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 	}
 
-	return m.delegate(msg)
+	// Filtering settles asynchronously, so the visible items — and with them
+	// the cursor's resting place — can change outside a key press.
+	return m.delegateAndSkip(msg, true)
 }
 
 func (m Model) turnsLoaded(msg turnsMsg) (tea.Model, tea.Cmd) {
@@ -182,6 +185,7 @@ func (m Model) turnsLoaded(msg turnsMsg) (tea.Model, tea.Cmd) {
 	cmd := m.turns.SetItems(items)
 	m.turns.ResetFilter()
 	m.turns.ResetSelected()
+	m.skipHousekeeping(true)
 	m.stage = stageTurns
 	m.status = ""
 	if len(items) == 0 {
@@ -233,7 +237,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.sel = selection{}
 			return m, nil
 		case key.Matches(msg, keys.Open):
-			if _, ok := m.turns.SelectedItem().(turnItem); ok {
+			if item, ok := m.currentItem(); ok && !item.turn.Housekeeping() {
 				m.stage = stageResponse
 				m.showResponse()
 			}
@@ -265,7 +269,29 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	return m.delegate(msg)
+	// Any key the list handles may have moved the cursor onto a marker.
+	return m.delegateAndSkip(msg, !movesBackward(msg))
+}
+
+// delegateAndSkip hands a message to the current component, then steps the
+// cursor off any session command it came to rest on.
+func (m Model) delegateAndSkip(msg tea.Msg, forward bool) (tea.Model, tea.Cmd) {
+	next, cmd := m.delegate(msg)
+	moved := next.(Model)
+	if moved.stage == stageTurns {
+		moved.skipHousekeeping(forward)
+	}
+	return moved, cmd
+}
+
+// movesBackward reports whether a key moves the cursor towards the top of the
+// list, which is the direction to keep searching when it lands on a marker.
+func movesBackward(msg tea.KeyPressMsg) bool {
+	switch msg.String() {
+	case "up", "k", "pgup", "b", "home", "g":
+		return true
+	}
+	return false
 }
 
 func (m Model) handleExportKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -315,10 +341,50 @@ func (m Model) beginExport() (tea.Model, tea.Cmd) {
 	return m, m.filename.Focus()
 }
 
+// isHousekeeping reports whether a list item is a session command.
+func isHousekeeping(it list.Item) bool {
+	item, ok := it.(turnItem)
+	return ok && item.turn.Housekeeping()
+}
+
+// skipHousekeeping moves the cursor off a session command, which has no
+// response to read and nothing worth exporting. It searches in the direction
+// the cursor was already travelling, then the other way, and gives up if every
+// visible item is one — which only happens when a filter matches nothing else.
+func (m *Model) skipHousekeeping(forward bool) {
+	items := m.turns.VisibleItems()
+	if len(items) == 0 {
+		return
+	}
+
+	// Narrowing a filter can shrink the list out from under the cursor, which
+	// otherwise keeps an index past the end and selects nothing at all.
+	start := min(max(m.turns.Index(), 0), len(items)-1)
+	if start != m.turns.Index() {
+		m.turns.Select(start)
+	}
+	if !isHousekeeping(items[start]) {
+		return
+	}
+
+	step := 1
+	if !forward {
+		step = -1
+	}
+	for _, dir := range []int{step, -step} {
+		for i := start + dir; i >= 0 && i < len(items); i += dir {
+			if !isHousekeeping(items[i]) {
+				m.turns.Select(i)
+				return
+			}
+		}
+	}
+}
+
 // toggleCurrent marks or unmarks the highlighted turn.
 func (m *Model) toggleCurrent() {
 	item, ok := m.currentItem()
-	if !ok {
+	if !ok || item.turn.Housekeeping() {
 		return
 	}
 	if m.sel[item.turn.ID] {
@@ -336,16 +402,18 @@ func (m *Model) toggleVisible() {
 		return
 	}
 
+	// Session commands are not selectable, so they are neither counted nor
+	// marked here.
 	allMarked := true
 	for _, it := range visible {
-		if item, ok := it.(turnItem); ok && !m.sel[item.turn.ID] {
+		if item, ok := it.(turnItem); ok && !item.turn.Housekeeping() && !m.sel[item.turn.ID] {
 			allMarked = false
 			break
 		}
 	}
 	for _, it := range visible {
 		item, ok := it.(turnItem)
-		if !ok {
+		if !ok || item.turn.Housekeeping() {
 			continue
 		}
 		if allMarked {

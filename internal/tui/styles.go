@@ -33,6 +33,9 @@ var (
 
 	metaStyle = lipgloss.NewStyle().Foreground(subtle).MarginBottom(1)
 
+	// housekeepingStyle marks the session commands the cursor skips over.
+	housekeepingStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
+
 	toolStyle      = lipgloss.NewStyle().Foreground(accent)
 	toolArgStyle   = lipgloss.NewStyle().Foreground(subtle)
 	exportBoxStyle = lipgloss.NewStyle().Padding(1, 2)

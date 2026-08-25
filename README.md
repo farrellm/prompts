@@ -44,6 +44,7 @@ labelled with the session it came from.
 | `q` | quit (backs out of a response) |
 
 Marks survive filtering, so you can search several times and collect as you go.
+The cursor steps over session-command markers, which cannot be read or exported.
 
 ### Export
 
@@ -85,6 +86,18 @@ Tool results, the output commands produce, background task notifications,
 interrupt markers and injected system reminders are all filtered out, and
 assistant reasoning blocks are omitted from responses.
 
-Session-management commands (`/clear`, `/model`, `/plugin` and friends) are
-listed like anything else. They have no response, so they read as bare entries;
-on this machine they account for roughly 150 of 714 prompts.
+Session-management commands — `/clear`, `/model`, `/plugin` and friends — never
+reach the model, so there is no response to read. They stay in the list as
+unobtrusive one-line markers showing where a session was cleared or switched,
+dimmed, and the cursor steps over them:
+
+```
+  /clear
+○ apply it and push
+   Trim and migrate CLAUDE.md · Jul 31 03:19
+○ split the Chunk/Embed bullet
+   Trim and migrate CLAUDE.md · Jul 31 03:01
+```
+
+The distinction is whether a command got a response, not what it is called:
+`/init` and plugin skills are ordinary prompts, `/clear` is a marker.
