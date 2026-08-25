@@ -73,7 +73,7 @@ func send(t *testing.T, m Model, keys ...string) Model {
 func loaded(t *testing.T) Model {
 	t.Helper()
 	project := claudelog.Project{Path: "/home/u/proj", Dir: "/tmp/proj", Sessions: 1}
-	m := New([]claudelog.Project{project})
+	m := New([]claudelog.Project{project}, nil)
 
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = next.(Model)
@@ -208,7 +208,7 @@ func TestEnterOpensAndLeavesResponse(t *testing.T) {
 func loadedWithMarkers(t *testing.T) Model {
 	t.Helper()
 	project := claudelog.Project{Path: "/home/u/proj", Dir: "/tmp/proj", Sessions: 1}
-	m := New([]claudelog.Project{project})
+	m := New([]claudelog.Project{project}, nil)
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = next.(Model)
 
@@ -313,5 +313,73 @@ func TestSessionCommandsAreInert(t *testing.T) {
 	m = send(t, m, "e")
 	if m.exporting {
 		t.Error("export opened with only session commands in view")
+	}
+}
+
+// Opening from the working directory skips the project list, but esc must still
+// back out to it — with the cursor on the project that was open.
+func TestAutoOpenProject(t *testing.T) {
+	projects := []claudelog.Project{
+		{Dir: "/tmp/other", Path: "/home/u/other", Sessions: 1},
+		{Dir: "/tmp/proj", Path: "/home/u/proj", Sessions: 1},
+	}
+	here := projects[1]
+
+	m := New(projects, &here)
+	if !m.loading {
+		t.Error("a model opening a project should start in its loading state")
+	}
+
+	// Init must ask for the turns; without that the spinner never resolves.
+	var loaded bool
+	if cmd := m.Init(); cmd != nil {
+		if batch, ok := runCmd(cmd).(tea.BatchMsg); ok {
+			for _, c := range batch {
+				if _, ok := runCmd(c).(turnsMsg); ok {
+					loaded = true
+				}
+			}
+		}
+	}
+	if !loaded {
+		t.Fatal("Init did not request the project's turns")
+	}
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = next.(Model)
+	next, cmd := m.Update(turnsMsg{
+		project: here,
+		turns:   []claudelog.Turn{{ID: "1", Prompt: "a prompt", Time: time.Now()}},
+	})
+	m = next.(Model)
+	if cmd != nil {
+		runCmd(cmd)
+	}
+
+	if m.stage != stageTurns {
+		t.Fatalf("stage = %v, want the prompt list", m.stage)
+	}
+	if m.loading {
+		t.Error("still loading after the turns arrived")
+	}
+
+	m = send(t, m, "esc")
+	if m.stage != stageProjects {
+		t.Fatalf("esc did not back out to the project list")
+	}
+	item, ok := m.projects.SelectedItem().(projectItem)
+	if !ok || item.project.Path != "/home/u/proj" {
+		t.Errorf("cursor is on %v, want the project that was open", item.project.Path)
+	}
+}
+
+// Outside any project the list is shown as before.
+func TestNoAutoOpenShowsProjectList(t *testing.T) {
+	m := New([]claudelog.Project{{Dir: "/tmp/proj", Path: "/home/u/proj"}}, nil)
+	if m.loading {
+		t.Error("a model with no project to open should not start loading")
+	}
+	if m.stage != stageProjects {
+		t.Errorf("stage = %v, want the project list", m.stage)
 	}
 }

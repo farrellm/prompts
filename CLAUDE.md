@@ -31,6 +31,11 @@ export     selected turns           →  Markdown
 
 `claudelog` knows nothing about the UI; `export` takes `[]Turn` and returns a string. All UI state lives in one `tui.Model` with a `stage` enum — there is no per-screen model.
 
+`MatchProject` decides whether the working directory is inside a project, in
+which case `main` hands it to `New` and the project list is skipped. Paths are
+compared by element, not as strings — `/home/u/proj` must not match
+`/home/u/project` — and the deepest match wins, since projects nest.
+
 Two-phase loading matters for responsiveness: `ListProjects` reads at most one line per project (to recover its `cwd`), while `LoadProject` parses every transcript in a project and runs in a `tea.Cmd` behind a spinner. The heaviest project here is 27 sessions / 15 MB and takes ~640 ms.
 
 ## The transcript format

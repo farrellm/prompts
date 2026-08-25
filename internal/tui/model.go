@@ -43,6 +43,7 @@ type Model struct {
 	renderer *renderer
 
 	project   claudelog.Project
+	opening   *claudelog.Project // loaded at startup, from the working directory
 	sel       selection
 	loading   bool
 	exporting bool
@@ -53,7 +54,10 @@ type Model struct {
 
 // New builds the model around an already-enumerated project list, so that an
 // empty archive can be reported before the terminal is taken over.
-func New(projects []claudelog.Project) Model {
+//
+// A non-nil open is loaded straight away, skipping the project list; esc still
+// backs out to it.
+func New(projects []claudelog.Project, open *claudelog.Project) Model {
 	items := make([]list.Item, len(projects))
 	for i, p := range projects {
 		items[i] = projectItem{project: p}
@@ -74,6 +78,8 @@ func New(projects []claudelog.Project) Model {
 		filename: fn,
 		renderer: newRenderer(80, true),
 		sel:      selection{},
+		opening:  open,
+		loading:  open != nil,
 	}
 }
 
@@ -91,7 +97,11 @@ func newList(items []list.Item, singular, plural string) list.Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(tea.RequestBackgroundColor, m.spinner.Tick)
+	cmds := []tea.Cmd{tea.RequestBackgroundColor, m.spinner.Tick}
+	if m.opening != nil {
+		cmds = append(cmds, loadTurns(*m.opening))
+	}
+	return tea.Batch(cmds...)
 }
 
 // turnsMsg carries the result of loading one project's transcripts.
@@ -176,6 +186,7 @@ func (m Model) turnsLoaded(msg turnsMsg) (tea.Model, tea.Cmd) {
 	}
 
 	m.project = msg.project
+	m.selectProject(msg.project)
 	m.sel = selection{}
 	items := make([]list.Item, len(msg.turns))
 	for i, t := range msg.turns {
@@ -339,6 +350,17 @@ func (m Model) beginExport() (tea.Model, tea.Cmd) {
 	m.filename.SetValue(defaultFilename(m.project.Path))
 	m.filename.CursorEnd()
 	return m, m.filename.Focus()
+}
+
+// selectProject moves the projects cursor onto a project, so that backing out
+// of one opened from the working directory lands on it rather than at the top.
+func (m *Model) selectProject(p claudelog.Project) {
+	for i, it := range m.projects.VisibleItems() {
+		if item, ok := it.(projectItem); ok && item.project.Dir == p.Dir {
+			m.projects.Select(i)
+			return
+		}
+	}
 }
 
 // isHousekeeping reports whether a list item is a session command.
