@@ -22,7 +22,7 @@ func Markdown(project string, turns []claudelog.Turn) string {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Claude Code prompts — %s\n\n", project)
-	fmt.Fprintf(&b, "_Exported %s · %s_\n", time.Now().Format("2006-01-02 15:04"), plural(len(ordered), "prompt"))
+	fmt.Fprintf(&b, "_Exported %s · %s_\n", time.Now().In(claudelog.Zone).Format("2006-01-02 15:04"), plural(len(ordered), "prompt"))
 
 	for _, t := range ordered {
 		b.WriteString("\n---\n\n")

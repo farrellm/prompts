@@ -41,6 +41,13 @@ func TestParseSession(t *testing.T) {
 	if first.GitBranch != "master" || first.Cwd != "/home/u/proj" {
 		t.Errorf("first turn metadata = %q %q", first.Cwd, first.GitBranch)
 	}
+	// Recorded as 03:03 UTC, which in New York is still the previous evening.
+	if first.Time.Location() != Zone {
+		t.Errorf("time location = %v, want %v", first.Time.Location(), Zone)
+	}
+	if got := first.Time.Format("2006-01-02 15:04"); got != "2026-07-30 23:03" {
+		t.Errorf("time = %s, want 2026-07-30 23:03", got)
+	}
 
 	// The response spans two requests and skips the thinking block; the tool
 	// result interleaved between them is not part of it.
@@ -172,6 +179,9 @@ func TestListProjectsAndLoadProject(t *testing.T) {
 	}
 	if p := byDir["-home-u-proj"]; p.Path != "/home/u/proj" || p.Sessions != 1 {
 		t.Errorf("proj = %+v, want the cwd read from the transcript", p)
+	}
+	if p := byDir["-home-u-proj"]; p.Modified.Location() != Zone {
+		t.Errorf("modified location = %v, want %v", p.Modified.Location(), Zone)
 	}
 	// Without a recorded cwd the directory name is demangled, dashes and all.
 	if p := byDir["-home-u-other"]; p.Path != "/home/u/other" {

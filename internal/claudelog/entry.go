@@ -5,7 +5,17 @@ package claudelog
 import (
 	"encoding/json"
 	"time"
+	_ "time/tzdata" // Zone must resolve even where the system has no zoneinfo
 )
+
+// Zone is the time zone every time is shown in. Transcripts record UTC.
+var Zone = func() *time.Location {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		panic(err)
+	}
+	return loc
+}()
 
 // entry is a single line of a transcript. Only the fields we actually use are
 // declared; transcripts carry a good deal more.

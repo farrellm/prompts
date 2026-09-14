@@ -106,7 +106,7 @@ func sessionFiles(dir string) ([]sessionFile, error) {
 		if err != nil {
 			continue
 		}
-		files = append(files, sessionFile{path: m, modified: info.ModTime()})
+		files = append(files, sessionFile{path: m, modified: info.ModTime().In(Zone)})
 	}
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].modified.After(files[j].modified)
@@ -186,7 +186,7 @@ func parseSession(path string) ([]Turn, error) {
 			turns = append(turns, Turn{
 				ID:        id,
 				SessionID: sessionID,
-				Time:      e.Timestamp,
+				Time:      e.Timestamp.In(Zone),
 				Cwd:       e.Cwd,
 				GitBranch: e.GitBranch,
 				Prompt:    text,
