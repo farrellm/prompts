@@ -502,7 +502,7 @@ func defaultFilename(project string) string {
 	if base == "." || base == string(filepath.Separator) || base == "" {
 		base = "claude"
 	}
-	return fmt.Sprintf("claude-prompts-%s-%s.md", base, time.Now().Format("2006-01-02"))
+	return fmt.Sprintf("claude-prompts-%s-%s.md", base, time.Now().In(claudelog.Zone).Format("2006-01-02"))
 }
 
 // expand resolves a leading ~ and makes the path absolute.
